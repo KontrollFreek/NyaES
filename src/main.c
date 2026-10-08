@@ -1,6 +1,13 @@
 #include "nes.h"
+
+#include <GL/glew.h>
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
-#include <stdio.h>
+
+#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+#include <cimgui.h>
+#include <cimgui_impl.h>
+
 
 NES nes = {0};
 
@@ -12,12 +19,30 @@ void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, in
 int main() {
     glfwInit();
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-    glfwWindowHint(GLFW_OPENGL_COMPAT_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
 
     GLFWwindow* window = glfwCreateWindow(280 << 1, 240 << 1, "NyaES", NULL, NULL);
+
+    glfwMakeContextCurrent(window);
+    glewInit();
+
+
+    igCreateContext(NULL);
+    ImGuiIO* pIO = igGetIO_Nil();
+    pIO->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    igStyleColorsDark(NULL);
+
+    ImGuiStyle* pStyle = igGetStyle();
+    ImGuiStyle_ScaleAllSizes(pStyle, 1);
+    pStyle->FontScaleDpi = 1;
+
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init(NULL);
+
 
     NES* pNes = &nes;
 
@@ -27,30 +52,68 @@ int main() {
     glfwSetKeyCallback(window, glfw_key_callback);
 
 
-    // TODO - add gui library for displaying info. maybe imgui?
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        igNewFrame();
+
         if (!pNes->cpu.cpu_halted) {
-            if (!allow_step) continue;
-            allow_step = false;
-
-
-            step_cpu(pNes);
-
-            char buf[0xFFFF];
-            int len = 0;
-
-        #define __print_addr(x) len += sprintf(buf + len, "$%04x: 0x%02x\n", x, read_addr(pNes, x))
-            __print_addr(0x0000);
-            __print_addr(0x0001);
-            __print_addr(0x0002);
-            __print_addr(0x0550);
-            __print_addr(nes.cpu.registers.program_counter);
-            
-            printf("\e[1;1H\e[2J%s", buf);
+            if (allow_step) {
+                allow_step = false;
+                step_cpu(pNes);
+            }
         }
+
+        {
+            igBegin("CPU", NULL, 0);
+
+            igSeparatorText("Registers");
+
+            igText("PC: %04x", nes.cpu.registers.program_counter);
+            igText("A:  %02x", nes.cpu.registers.a);
+            igText("X:  %02x", nes.cpu.registers.x);
+            igText("Y:  %02x", nes.cpu.registers.y);
+
+            igSeparatorText("State");
+
+            igText("Halted:             %s", nes.cpu.cpu_halted ? "yes" : "no");
+            igText("Remaining Cycles:   %i", nes.cpu.remaining_cpu_cycles);
+
+            igSeparatorText("Flags");
+
+            igText("Carry:              %i", nes.cpu.flags.carry);
+            igText("Decimal:            %i", nes.cpu.flags.decimal);
+            igText("Interrupt Disable:  %i", nes.cpu.flags.interrupt_disable);
+            igText("Negative:           %i", nes.cpu.flags.negative);
+            igText("Overflow:           %i", nes.cpu.flags.overflow);
+            igText("Zero:               %i", nes.cpu.flags.zero);
+
+            igEnd();
+        }
+
+        igRender();
+
+
+        int w, h;
+        glfwGetFramebufferSize(window, &w, &h);
+        glViewport(0, 0, w, h);
+
+
+        glClearColor(0.001, 0.003, 0.002, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        ImGui_ImplOpenGL3_RenderDrawData(igGetDrawData());
+
+
+        glfwSwapBuffers(window);
     }
 
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    igDestroyContext(NULL);
+
+    glfwDestroyWindow(window);
     glfwTerminate();
 }
